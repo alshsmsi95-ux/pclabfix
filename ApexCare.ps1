@@ -1,4 +1,4 @@
-<#
+﻿<#
     .NAME
         ApexCare Engine (Beast Edition)
     .DESCRIPTION
@@ -13,7 +13,19 @@
 # 0. RUNTIME INITIALIZATION & SELF-ELEVATION
 # ==============================================================================
 $ErrorActionPreference = "SilentlyContinue"
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+
+# Configure console output encoding for modern terminals
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+} catch {}
+
+# Safe TLS 1.2 / TLS 1.3 protocol registration across all .NET versions
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 -bor 12288
+} catch {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+}
 
 # Storage Directory for logs & state persistence
 $Global:AppDir = "$env:ProgramData\ApexCare"
@@ -23,31 +35,76 @@ $Global:ReportFile = Join-Path $Global:AppDir "SystemReport.txt"
 $Global:ShortUrl = "https://tinyurl.com/pclabfix"
 $Global:RawUrl = "https://raw.githubusercontent.com/yousefmasterhr-lab/pclabfix/main/ApexCare.ps1"
 
-if (-not (Test-Path $Global:AppDir)) { 
-    New-Item -Path $Global:AppDir -ItemType Directory -Force | Out-Null 
+function Ensure-AppDirectory {
+    if (-not (Test-Path $Global:AppDir)) { 
+        try {
+            New-Item -Path $Global:AppDir -ItemType Directory -Force | Out-Null 
+        } catch {}
+    }
+}
+Ensure-AppDirectory
+
+function Sync-LocalScript {
+    Ensure-AppDirectory
+    try {
+        $raw = ""
+        try {
+            $raw = (Invoke-RestMethod -Uri $Global:ShortUrl -UseBasicParsing)
+        } catch {
+            $raw = (Invoke-RestMethod -Uri $Global:RawUrl -UseBasicParsing)
+        }
+        if ($raw -and $raw.Length -gt 100) {
+            [System.IO.File]::WriteAllText($Global:LocalScript, $raw, [System.Text.Encoding]::UTF8)
+        }
+    } catch {}
 }
 
 # Resolve execution path (in-memory pipeline vs local file)
 $Global:ScriptRuntimePath = $PSCommandPath
 if ([string]::IsNullOrWhiteSpace($Global:ScriptRuntimePath)) {
     $Global:ScriptRuntimePath = $Global:LocalScript
-    if (-not (Test-Path $Global:LocalScript)) {
-        try {
-            Invoke-RestMethod -Uri $Global:ShortUrl -OutFile $Global:LocalScript
-        } catch {
-            Invoke-RestMethod -Uri $Global:RawUrl -OutFile $Global:LocalScript
-        }
+    if (-not (Test-Path $Global:LocalScript) -or ((Get-Item $Global:LocalScript -ErrorAction SilentlyContinue).Length -lt 1000)) {
+        Sync-LocalScript
     }
 } else {
-    Copy-Item -Path $Global:ScriptRuntimePath -Destination $Global:LocalScript -Force -ErrorAction SilentlyContinue
+    try {
+        Copy-Item -Path $Global:ScriptRuntimePath -Destination $Global:LocalScript -Force -ErrorAction SilentlyContinue
+    } catch {}
 }
 
 function Assert-Administrator {
     $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-Host " [!] Elevating privileges to Administrator..." -ForegroundColor Yellow
-        Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$Global:ScriptRuntimePath`"" -Verb RunAs
-        exit
+        Write-Host ""
+        Write-Host " [*] Elevating privileges to Administrator..." -ForegroundColor Yellow
+        
+        # Ensure script exists locally if executed in-memory
+        if ([string]::IsNullOrWhiteSpace($Global:ScriptRuntimePath) -or (-not (Test-Path $Global:ScriptRuntimePath))) {
+            $Global:ScriptRuntimePath = $Global:LocalScript
+            Sync-LocalScript
+        }
+
+        if (-not (Test-Path $Global:ScriptRuntimePath)) {
+            Write-Host " [X] Could not resolve script location for elevation." -ForegroundColor Red
+            Read-Host " Press Enter to exit..."
+            exit 1
+        }
+
+        $elevatedArgs = @(
+            "-NoExit",
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-File", "`"$Global:ScriptRuntimePath`""
+        ) -join " "
+
+        try {
+            Start-Process -FilePath "powershell.exe" -ArgumentList $elevatedArgs -Verb RunAs
+        } catch {
+            Write-Host " [X] Administrator privileges were denied or elevation failed: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "     Please right-click PowerShell and choose 'Run as administrator', then re-run the script." -ForegroundColor Yellow
+            Read-Host " Press Enter to exit..."
+        }
+        exit 0
     }
 }
 Assert-Administrator
@@ -57,10 +114,10 @@ Assert-Administrator
 # ==============================================================================
 function Show-Header {
     Clear-Host
-    Write-Host " ┌────────────────────────────────────────────────────────────────────────┐" -ForegroundColor DarkCyan
-    Write-Host " │                 APEXCARE ENGINE  //  BEAST EDITION                     │" -ForegroundColor Cyan
-    Write-Host " │     Autonomous Kernel Tuning | Diagnostics | GPU Acceleration | Repair │" -ForegroundColor DarkCyan
-    Write-Host " └────────────────────────────────────────────────────────────────────────┘" -ForegroundColor DarkCyan
+    Write-Host " +------------------------------------------------------------------------+" -ForegroundColor DarkCyan
+    Write-Host " |                 APEXCARE ENGINE  //  BEAST EDITION                     |" -ForegroundColor Cyan
+    Write-Host " |     Autonomous Kernel Tuning | Diagnostics | GPU Acceleration | Repair |" -ForegroundColor DarkCyan
+    Write-Host " +------------------------------------------------------------------------+" -ForegroundColor DarkCyan
     Write-Host ""
 }
 
@@ -71,7 +128,7 @@ function Write-Step {
 
 function Write-Success {
     param([string]$Message)
-    Write-Host "    [✓] $Message" -ForegroundColor Green
+    Write-Host "    [OK] $Message" -ForegroundColor Green
 }
 
 function Write-Notice {
@@ -396,17 +453,17 @@ function Show-OEMOfficialLink {
     $oem = Get-OEMSupportDetails
 
     Write-Host ""
-    Write-Host " ┌────────────────────────────────────────────────────────────────────────┐" -ForegroundColor Green
-    Write-Host " │                    OFFICIAL OEM SUPPORT HUB                            │" -ForegroundColor White
-    Write-Host " ├────────────────────────────────────────────────────────────────────────┤" -ForegroundColor Green
-    Write-Host " │ Brand Detected : $($oem.OEMName.PadRight(56))│" -ForegroundColor White
-    Write-Host " │ Device Model   : $($oem.Model.PadRight(56))│" -ForegroundColor White
-    Write-Host " │ Serial / Tag   : $($oem.SerialNumber.PadRight(56))│" -ForegroundColor White
-    Write-Host " ├────────────────────────────────────────────────────────────────────────┤" -ForegroundColor Green
-    Write-Host " │ Tool Name      : $($oem.ToolName.PadRight(56))│" -ForegroundColor Yellow
-    Write-Host " │ Tool Web Link  : $($oem.ToolUrl)" -ForegroundColor Cyan
-    Write-Host " │ Drivers Hub    : $($oem.SupportPortal)" -ForegroundColor Cyan
-    Write-Host " └────────────────────────────────────────────────────────────────────────┘" -ForegroundColor Green
+    Write-Host " +------------------------------------------------------------------------+" -ForegroundColor Green
+    Write-Host " |                    OFFICIAL OEM SUPPORT HUB                            |" -ForegroundColor White
+    Write-Host " +------------------------------------------------------------------------+" -ForegroundColor Green
+    Write-Host " | Brand Detected : $($oem.OEMName.PadRight(56))|" -ForegroundColor White
+    Write-Host " | Device Model   : $($oem.Model.PadRight(56))|" -ForegroundColor White
+    Write-Host " | Serial / Tag   : $($oem.SerialNumber.PadRight(56))|" -ForegroundColor White
+    Write-Host " +------------------------------------------------------------------------+" -ForegroundColor Green
+    Write-Host " | Tool Name      : $($oem.ToolName.PadRight(56))|" -ForegroundColor Yellow
+    Write-Host " | Tool Web Link  : $($oem.ToolUrl)" -ForegroundColor Cyan
+    Write-Host " | Drivers Hub    : $($oem.SupportPortal)" -ForegroundColor Cyan
+    Write-Host " +------------------------------------------------------------------------+" -ForegroundColor Green
     Write-Host ""
 
     $choice = Read-Host "Would you like to open the Official Tool download page in your browser now? (Y/N)"
@@ -756,9 +813,9 @@ function Start-FullAutoPilot {
         if ($task.Index -ge $ResumeStep) {
             Set-AutomationState -CurrentPhase $task.Name -StepIndex $task.Index
             Write-Host ""
-            Write-Host " ┌────────────────────────────────────────────────────────────────────────┐" -ForegroundColor Magenta
-            Write-Host " │ >>> [PIPELINE STAGE $($task.Index)/$($pipeline.Count)]: $($task.Name.PadRight(47))│" -ForegroundColor White
-            Write-Host " └────────────────────────────────────────────────────────────────────────┘" -ForegroundColor Magenta
+            Write-Host " +------------------------------------------------------------------------+" -ForegroundColor Magenta
+            Write-Host " | >>> [PIPELINE STAGE $($task.Index)/$($pipeline.Count)]: $($task.Name.PadRight(47))|" -ForegroundColor White
+            Write-Host " +------------------------------------------------------------------------+" -ForegroundColor Magenta
             & $task.Action
 
             # Check if pending reboot was triggered
@@ -775,9 +832,9 @@ function Start-FullAutoPilot {
 
     Clear-AutomationState
     Write-Host ""
-    Write-Host " ╔════════════════════════════════════════════════════════════════════════╗" -ForegroundColor Green
-    Write-Host " ║         [✓] FULL BEAST MODE PIPELINE EXECUTED SUCCESSFULLY!            ║" -ForegroundColor Green
-    Write-Host " ╚════════════════════════════════════════════════════════════════════════╝" -ForegroundColor Green
+    Write-Host " +========================================================================+" -ForegroundColor Green
+    Write-Host " |         [OK] FULL BEAST MODE PIPELINE EXECUTED SUCCESSFULLY!           |" -ForegroundColor Green
+    Write-Host " +========================================================================+" -ForegroundColor Green
     
     Write-Host ""
     $optScan = Read-Host "Would you like to execute an Antivirus Security Scan now? (Y/N)"
@@ -793,54 +850,62 @@ function Start-FullAutoPilot {
 # ==============================================================================
 # MAIN ENTRY POINT & FLUENT INTERACTIVE MENU
 # ==============================================================================
-$activeState = Get-AutomationState
+try {
+    $activeState = Get-AutomationState
 
-if (($args -contains "-Resume") -and $activeState) {
-    Show-Header
-    Write-Notice "Detected interrupted routine. Resuming pipeline from Stage $($activeState.StepIndex) ($($activeState.CurrentPhase))..."
-    Start-FullAutoPilot -ResumeStep $activeState.StepIndex
-    exit
-}
-
-do {
-    Show-Header
-    Write-Host " Select an operational module:" -ForegroundColor Yellow
-    Write-Host " ┌── FULL AUTOMATION ──────────────────────────────────────────────────┐" -ForegroundColor DarkCyan
-    Write-Host " │ [1] FULL AUTOPILOT (Diagnostic -> Net -> Kernel -> Clean -> GPU)    │" -ForegroundColor Green
-    Write-Host " ├── SYSTEM AUDIT & OEM ───────────────────────────────────────────────┤" -ForegroundColor DarkCyan
-    Write-Host " │ [2] Hardware Diagnostics & Battery Wear Audit                       │"
-    Write-Host " │ [3] Get Official OEM Support Tool & Direct Driver Links             │" -ForegroundColor Cyan
-    Write-Host " ├── PERFORMANCE & KERNEL TUNING ──────────────────────────────────────┤" -ForegroundColor DarkCyan
-    Write-Host " │ [4] Network Stack Turbocharging (Zero Latency & Unthrottled)        │"
-    Write-Host " │ [5] CPU & OS Kernel Peak Responsiveness (Ultimate Power, Fast Boot) │"
-    Write-Host " │ [6] GPU Beast Mode & Display Pipeline (HAGS, VRR, Vendor Suite)     │"
-    Write-Host " ├── SYSTEM HYGIENE & REPAIR ──────────────────────────────────────────┤" -ForegroundColor DarkCyan
-    Write-Host " │ [7] Standby RAM Purge, Storage Recovery & NVMe/SSD TRIM             │"
-    Write-Host " │ [8] Safe Telemetry & Diagnostic Debloat (Non-Breaking)              │"
-    Write-Host " │ [9] Windows Core Image Repair & System Integrity (DISM & SFC)       │"
-    Write-Host " │ [10] Update Drivers & OEM Tool Provisioning                         │"
-    Write-Host " │ [11] Upgrade All Installed Apps (Winget Fleet Update)               │"
-    Write-Host " │ [12] Run Microsoft Defender Quick Scan with Signature Intelligence  │"
-    Write-Host " ├── EXIT ─────────────────────────────────────────────────────────────┤" -ForegroundColor DarkCyan
-    Write-Host " │ [13] Exit Session                                                   │" -ForegroundColor DarkGray
-    Write-Host " └─────────────────────────────────────────────────────────────────────┘" -ForegroundColor DarkCyan
-    Write-Host ""
-    $choice = Read-Host "Enter your selection (1-13)"
-
-    switch ($choice) {
-        "1"  { Start-FullAutoPilot -ResumeStep 1 }
-        "2"  { Invoke-HardwareDiagnostics; pause }
-        "3"  { Show-OEMOfficialLink; pause }
-        "4"  { Invoke-NetworkOptimization; pause }
-        "5"  { Invoke-PeakPerformance; pause }
-        "6"  { Invoke-GPUBeastMode; pause }
-        "7"  { Invoke-DeepCleanup; pause }
-        "8"  { Invoke-SafeDebloat; pause }
-        "9"  { Invoke-SystemRepair; pause }
-        "10" { Install-Prerequisites; Invoke-DriverAndOEMUpdates; pause }
-        "11" { Install-Prerequisites; Invoke-AppUpdates; pause }
-        "12" { Invoke-SecurityScan; pause }
-        "13" { Write-Host "Terminating session..."; exit }
-        default { Write-Notice "Invalid selection, please select a valid option (1-13)." }
+    if (($args -contains "-Resume") -and $activeState) {
+        Show-Header
+        Write-Notice "Detected interrupted routine. Resuming pipeline from Stage $($activeState.StepIndex) ($($activeState.CurrentPhase))..."
+        Start-FullAutoPilot -ResumeStep $activeState.StepIndex
+        exit
     }
-} while ($choice -ne "13")
+
+    do {
+        Show-Header
+        Write-Host " Select an operational module:" -ForegroundColor Yellow
+        Write-Host " +-- FULL AUTOMATION --------------------------------------------------+" -ForegroundColor DarkCyan
+        Write-Host " | [1] FULL AUTOPILOT (Diagnostic -> Net -> Kernel -> Clean -> GPU)    |" -ForegroundColor Green
+        Write-Host " +-- SYSTEM AUDIT & OEM -----------------------------------------------+" -ForegroundColor DarkCyan
+        Write-Host " | [2] Hardware Diagnostics & Battery Wear Audit                       |"
+        Write-Host " | [3] Get Official OEM Support Tool & Direct Driver Links             |" -ForegroundColor Cyan
+        Write-Host " +-- PERFORMANCE & KERNEL TUNING --------------------------------------+" -ForegroundColor DarkCyan
+        Write-Host " | [4] Network Stack Turbocharging (Zero Latency & Unthrottled)        |"
+        Write-Host " | [5] CPU & OS Kernel Peak Responsiveness (Ultimate Power, Fast Boot) |"
+        Write-Host " | [6] GPU Beast Mode & Display Pipeline (HAGS, VRR, Vendor Suite)     |"
+        Write-Host " +-- SYSTEM HYGIENE & REPAIR ------------------------------------------+" -ForegroundColor DarkCyan
+        Write-Host " | [7] Standby RAM Purge, Storage Recovery & NVMe/SSD TRIM             |"
+        Write-Host " | [8] Safe Telemetry & Diagnostic Debloat (Non-Breaking)              |"
+        Write-Host " | [9] Windows Core Image Repair & System Integrity (DISM & SFC)       |"
+        Write-Host " | [10] Update Drivers & OEM Tool Provisioning                         |"
+        Write-Host " | [11] Upgrade All Installed Apps (Winget Fleet Update)               |"
+        Write-Host " | [12] Run Microsoft Defender Quick Scan with Signature Intelligence  |"
+        Write-Host " +-- EXIT -------------------------------------------------------------+" -ForegroundColor DarkCyan
+        Write-Host " | [13] Exit Session                                                   |" -ForegroundColor DarkGray
+        Write-Host " +---------------------------------------------------------------------+" -ForegroundColor DarkCyan
+        Write-Host ""
+        $choice = Read-Host " Enter your selection (1-13)"
+
+        switch ($choice) {
+            "1"  { Start-FullAutoPilot -ResumeStep 1 }
+            "2"  { Invoke-HardwareDiagnostics; pause }
+            "3"  { Show-OEMOfficialLink; pause }
+            "4"  { Invoke-NetworkOptimization; pause }
+            "5"  { Invoke-PeakPerformance; pause }
+            "6"  { Invoke-GPUBeastMode; pause }
+            "7"  { Invoke-DeepCleanup; pause }
+            "8"  { Invoke-SafeDebloat; pause }
+            "9"  { Invoke-SystemRepair; pause }
+            "10" { Install-Prerequisites; Invoke-DriverAndOEMUpdates; pause }
+            "11" { Install-Prerequisites; Invoke-AppUpdates; pause }
+            "12" { Invoke-SecurityScan; pause }
+            "13" { Write-Host "Terminating session..."; exit }
+            default { Write-Notice "Invalid selection, please select a valid option (1-13)." }
+        }
+    } while ($choice -ne "13")
+} catch {
+    Write-Host ""
+    Write-Host " [X] Unexpected Runtime Error: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host " [X] Location: $($_.InvocationInfo.PositionMessage)" -ForegroundColor Red
+    Write-Host ""
+    Read-Host " Press Enter to exit..."
+}

@@ -18,12 +18,15 @@ irm tinyurl.com/pclabfix | iex
 irm https://raw.githubusercontent.com/yousefmasterhr-lab/pclabfix/main/ApexCare.ps1 | iex
 ```
 
+### 3. التشغيل بضغطة زر واحدة (1-Click Launcher):
+إذا قمت بتحميل المشروع محلياً، يمكنك ببساطة النقر المزدوج على ملف **`ApexCare.bat`** وسيقوم بطلب صلاحية المسؤول وتشغيل الأداة مباشرة.
+
 ---
 
 ## 🛠️ البنية البرمجية والوحدات الرئيسية (Beast Architecture)
 
-### 1. 🖥️ واجهة مستخدم رسومية حديثة (Modern Fluent TUI)
-- تصميم احترافي مستوحى من أدوات سطر الأوامر المؤسسية بألوان Cyberpunk وإطارات ANSI Box-Drawing (`┌─┐`, `│`, `└─┘`, `═`).
+### 1. 🖥️ واجهة مستخدم رسومية حديثة ومتوافقة 100% (Modern Fluent TUI)
+- تصميم احترافي مستوحى من أدوات سطر الأوامر المؤسسية بألوان Cyberpunk وإطارات متوافقة مع كافة بيئات PowerShell 5.1 و 7 وCMD.
 - قائمة تفاعلية مرقمة بدقة تسمح بتشغيل الطيار الآلي الكامل أو اختيار وحدات صيانة محددة.
 
 ### 2. ⚡ تسريع الشبكة وإلغاء القيود (Network Stack Turbocharging)
