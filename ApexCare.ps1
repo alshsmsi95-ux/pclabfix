@@ -1,4 +1,4 @@
-﻿<#
+<#
     .NAME
         ApexCare Engine
     .DESCRIPTION
@@ -12,21 +12,38 @@
 # ==============================================================================
 $ErrorActionPreference = "SilentlyContinue"
 
+# Storage Directory for logs & state persistence
+$Global:AppDir = "$env:ProgramData\ApexCare"
+$Global:LocalScript = Join-Path $Global:AppDir "ApexCare.ps1"
+$Global:StateFile = Join-Path $Global:AppDir "state.json"
+$Global:ReportFile = Join-Path $Global:AppDir "SystemReport.txt"
+if (-not (Test-Path $Global:AppDir)) { New-Item -Path $Global:AppDir -ItemType Directory -Force | Out-Null }
+
+# Robust runtime path resolution (supports local script, exe, and online execution via irm | iex)
+$Global:ScriptRuntimePath = $PSCommandPath
+if ([string]::IsNullOrWhiteSpace($Global:ScriptRuntimePath)) {
+    $Global:ScriptRuntimePath = $Global:LocalScript
+    if (-not (Test-Path $Global:LocalScript)) {
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-RestMethod -Uri "https://tinyurl.com/pclabfix" -OutFile $Global:LocalScript
+        } catch {
+            Invoke-RestMethod -Uri "https://raw.githubusercontent.com/yousefmasterhr-lab/pclabfix/main/ApexCare.ps1" -OutFile $Global:LocalScript
+        }
+    }
+} else {
+    Copy-Item -Path $Global:ScriptRuntimePath -Destination $Global:LocalScript -Force -ErrorAction SilentlyContinue
+}
+
 function Assert-Administrator {
     $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
         Write-Host "[!] Elevating privileges to Administrator..." -ForegroundColor Yellow
-        Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+        Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$Global:ScriptRuntimePath`"" -Verb RunAs
         exit
     }
 }
 Assert-Administrator
-
-# Storage Directory for logs & state persistence
-$Global:AppDir = "$env:ProgramData\ApexCare"
-$Global:StateFile = Join-Path $Global:AppDir "state.json"
-$Global:ReportFile = Join-Path $Global:AppDir "SystemReport.txt"
-if (-not (Test-Path $Global:AppDir)) { New-Item -Path $Global:AppDir -ItemType Directory -Force | Out-Null }
 
 # ==============================================================================
 # 1. UI & STYLING HELPERS
@@ -72,12 +89,12 @@ function Set-AutomationState {
         IsRunning     = $true
         CurrentPhase  = $CurrentPhase
         StepIndex     = $StepIndex
-        ScriptPath    = $PSCommandPath
+        ScriptPath    = $Global:ScriptRuntimePath
     }
     $state | ConvertTo-Json | Set-Content -Path $Global:StateFile -Force
 
     # Register RunOnce in Registry
-    Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -Name "ApexCareResume" -Value "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Resume" -Force
+    Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -Name "ApexCareResume" -Value "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$Global:ScriptRuntimePath`" -Resume" -Force
 }
 
 function Clear-AutomationState {

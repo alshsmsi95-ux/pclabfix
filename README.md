@@ -6,8 +6,14 @@ ApexCare Engine هي أداة متطورة ومكتوبة بلغة PowerShell؛ 
 ---
 
 ## ⚡ التشغيل الفوري بسطر واحد (Quick Run)
-يمكنك تشغيل الأداة مباشرة بدون الحاجة لتحميل مسبق عبر فتح **PowerShell كمسؤول (Run as Administrator)** وتشغيل السطر التالي:
+يمكنك تشغيل الأداة مباشرة بأي من الرابطين التاليين (المختصر أو الأصلي) عبر فتح **PowerShell كمسؤول (Run as Administrator)**:
 
+### 1. الرابط السريع المختصر (الأسهل للحفظ والكتابة):
+```powershell
+irm tinyurl.com/pclabfix | iex
+```
+
+### 2. الرابط الأصلي المباشر من GitHub:
 ```powershell
 irm https://raw.githubusercontent.com/yousefmasterhr-lab/pclabfix/main/ApexCare.ps1 | iex
 ```
