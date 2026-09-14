@@ -6,3 +6,4 @@ SystemReport.txt
 battery-report.xml
 dxdiag_raw.txt
 test_*.ps1
+_backups/
