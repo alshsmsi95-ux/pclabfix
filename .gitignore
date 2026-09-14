@@ -1,0 +1,8 @@
+*.exe
+*.log
+*.tmp
+state.json
+SystemReport.txt
+battery-report.xml
+dxdiag_raw.txt
+test_*.ps1
