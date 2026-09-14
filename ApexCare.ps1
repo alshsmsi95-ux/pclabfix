@@ -523,7 +523,7 @@ function Start-FullAutoPilot {
 # ==============================================================================
 $activeState = Get-AutomationState
 
-if ($args -contains "-Resume" -and $null -ne $activeState) {
+if (($args -contains "-Resume") -and $activeState) {
     Show-Header
     Write-Notice "Detected incomplete routine. Resuming pipeline from Step $($activeState.StepIndex) ($($activeState.CurrentPhase))..."
     Start-FullAutoPilot -ResumeStep $activeState.StepIndex
