@@ -1,4 +1,4 @@
-<#
+﻿<#
     .NAME
         ApexCare Engine
     .DESCRIPTION
@@ -103,11 +103,11 @@ function Get-OEMSupportDetails {
     $cs = Get-CimInstance Win32_ComputerSystem
     $bios = Get-CimInstance Win32_Bios
     $bb = Get-CimInstance Win32_BaseBoard
-    
+
     $mfg = "$($cs.Manufacturer) $($bb.Manufacturer)".Trim()
     $model = "$($cs.Model)".Trim()
     $serial = "$($bios.SerialNumber)".Trim()
-    
+
     # Defaults
     $oemName = "Unknown / Custom PC"
     $toolName = "Intel Driver & Support Assistant / Generic Catalog"
@@ -260,7 +260,7 @@ function Show-OEMOfficialLink {
 # ==============================================================================
 function Install-Prerequisites {
     Write-Step "Verifying and provisioning tool dependencies..."
-    
+
     # Enable TLS 1.2
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -293,7 +293,7 @@ function Invoke-HardwareDiagnostics {
     $chassis = Get-CimInstance Win32_SystemEnclosure
     $disks = Get-PhysicalDisk
     $oem = Get-OEMSupportDetails
-    
+
     # Determine Form Factor
     $isLaptop = $false
     $chassisTypes = $chassis.ChassisTypes
@@ -334,12 +334,12 @@ function Invoke-HardwareDiagnostics {
         Write-Notice "Laptop detected. Generating battery health audit..."
         $batteryPath = "$Global:AppDir\battery-report.xml"
         powercfg /batteryreport /xml /output $batteryPath | Out-Null
-        
+
         if (Test-Path $batteryPath) {
             [xml]$batteryXml = Get-Content $batteryPath
             $designCap = [double]$batteryXml.BatteryReport.Batteries.Battery.DesignCapacity
             $fullCap = [double]$batteryXml.BatteryReport.Batteries.Battery.FullChargeCapacity
-            
+
             if ($designCap -gt 0) {
                 $wearLevel = [Math]::Round(((1 - ($fullCap / $designCap)) * 100), 2)
                 $diagSummary += "-------------------------------------------------------------"
@@ -347,7 +347,7 @@ function Invoke-HardwareDiagnostics {
                 $diagSummary += "  - Design Capacity     : $designCap mWh"
                 $diagSummary += "  - Full Charge Capacity: $fullCap mWh"
                 $diagSummary += "  - Battery Wear Level  : $wearLevel %"
-                
+
                 if ($wearLevel -gt 35) {
                     $diagSummary += "  - Status: HIGH DEGRADATION DETECTED. Consider battery replacement."
                 } else {
@@ -370,7 +370,7 @@ function Invoke-HardwareDiagnostics {
 # ==============================================================================
 function Invoke-DriverAndOEMUpdates {
     Write-Step "Detecting OEM ecosystem and servicing driver repositories..."
-    
+
     $oem = Get-OEMSupportDetails
 
     Write-Host ""
@@ -384,7 +384,7 @@ function Invoke-DriverAndOEMUpdates {
     if ($oem.WingetId -ne "") {
         Write-Notice "Attempting automated deployment via Winget ($($oem.WingetId))..."
         winget install --id $oem.WingetId --accept-package-agreements --accept-source-agreements --silent
-        
+
         # Specific post-install trigger for Dell Command Update
         if ($oem.OEMName -eq "Dell" -and (Test-Path "C:\Program Files\Dell\CommandUpdate\dcu-cli.exe")) {
             Write-Notice "Triggering Dell Command | Update CLI scan..."
@@ -443,7 +443,7 @@ function Invoke-DeepCleanup {
 # ==============================================================================
 function Invoke-SystemRepair {
     Write-Step "Auditing and servicing Windows Component Store & System Files..."
-    
+
     Write-Notice "Running Deployment Image Servicing and Management (DISM)..."
     dism.exe /Online /Cleanup-Image /RestoreHealth /NoRestart
 
@@ -456,7 +456,7 @@ function Invoke-SystemRepair {
 # ==============================================================================
 function Invoke-SecurityScan {
     Write-Step "Initiating Microsoft Defender Malware Detection Routine..."
-    
+
     if (Get-Service -Name WinDefend -ErrorAction SilentlyContinue) {
         Write-Notice "Updating Defender signature intelligence..."
         Update-MpSignature
@@ -505,7 +505,7 @@ function Start-FullAutoPilot {
     Clear-AutomationState
     Write-Host ""
     Write-Host "[+] AUTOMATION PIPELINE EXECUTED SUCCESSFULLY!" -ForegroundColor Green
-    
+
     # Prompt for the optional Antivirus scan at the very end
     Write-Host ""
     $optScan = Read-Host "Would you like to execute an Antivirus Security Scan now? (Y/N)"
