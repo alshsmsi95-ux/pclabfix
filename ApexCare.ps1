@@ -39,7 +39,13 @@ function Ensure-AppDirectory {
     if (-not (Test-Path $Global:AppDir)) { 
         try {
             New-Item -Path $Global:AppDir -ItemType Directory -Force | Out-Null 
-        } catch {}
+        } catch {
+            $Global:AppDir = "$env:TEMP\ApexCare"
+            $Global:LocalScript = Join-Path $Global:AppDir "ApexCare.ps1"
+            $Global:StateFile = Join-Path $Global:AppDir "state.json"
+            $Global:ReportFile = Join-Path $Global:AppDir "SystemReport.txt"
+            New-Item -Path $Global:AppDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+        }
     }
 }
 Ensure-AppDirectory
@@ -63,9 +69,7 @@ function Sync-LocalScript {
 $Global:ScriptRuntimePath = $PSCommandPath
 if ([string]::IsNullOrWhiteSpace($Global:ScriptRuntimePath)) {
     $Global:ScriptRuntimePath = $Global:LocalScript
-    if (-not (Test-Path $Global:LocalScript) -or ((Get-Item $Global:LocalScript -ErrorAction SilentlyContinue).Length -lt 1000)) {
-        Sync-LocalScript
-    }
+    Sync-LocalScript
 } else {
     try {
         Copy-Item -Path $Global:ScriptRuntimePath -Destination $Global:LocalScript -Force -ErrorAction SilentlyContinue
