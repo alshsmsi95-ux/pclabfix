@@ -151,6 +151,45 @@ function Block-UnsafeOperation {
     return $false
 }
 
+function Invoke-RpcPrinterCompatibility {
+    Write-Step "Preparing optional RPC printer compatibility settings..."
+    Write-Notice "This is an explicit system change and is not part of Safe Mode diagnostics."
+    Write-Notice "RpcUseNamedPipeProtocol=1 requests the named-pipe protocol; this matches the supplied values."
+    Write-Host ""
+    Write-Host "The following machine-wide DWORD values will be created or replaced:" -ForegroundColor Yellow
+    Write-Host "  HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers\RPC" -ForegroundColor Cyan
+    Write-Host "    RpcUseNamedPipeProtocol = 1"
+    Write-Host "    RpcProtocols            = 7"
+    Write-Host "    ForceKerberosForRpc     = 1"
+    Write-Host "  HKLM:\System\CurrentControlSet\Control\Print" -ForegroundColor Cyan
+    Write-Host "    RpcAuthnLevelPrivacyEnabled = 0"
+    Write-Host ""
+
+    $confirmation = Read-Host "Type APPLY-RPC-SETTINGS to continue"
+    if ($confirmation -cne "APPLY-RPC-SETTINGS") {
+        Write-Notice "RPC settings were not changed."
+        return
+    }
+
+    try {
+        $rpcPolicyPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers\RPC"
+        $printPath = "HKLM:\System\CurrentControlSet\Control\Print"
+
+        New-Item -Path $rpcPolicyPath -Force -ErrorAction Stop | Out-Null
+        New-Item -Path $printPath -Force -ErrorAction Stop | Out-Null
+
+        New-ItemProperty -Path $rpcPolicyPath -Name "RpcUseNamedPipeProtocol" -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+        New-ItemProperty -Path $rpcPolicyPath -Name "RpcProtocols" -PropertyType DWord -Value 7 -Force -ErrorAction Stop | Out-Null
+        New-ItemProperty -Path $rpcPolicyPath -Name "ForceKerberosForRpc" -PropertyType DWord -Value 1 -Force -ErrorAction Stop | Out-Null
+        New-ItemProperty -Path $printPath -Name "RpcAuthnLevelPrivacyEnabled" -PropertyType DWord -Value 0 -Force -ErrorAction Stop | Out-Null
+
+        Write-Success "RPC printer settings were applied successfully."
+        Write-Notice "Restart Windows manually for the settings to take effect. ApexCare will not restart it automatically."
+    } catch {
+        Write-Critical "RPC settings could not be applied: $($_.Exception.Message)"
+    }
+}
+
 # ==============================================================================
 # MODULE 0: ZERO-TOUCH BOOTSTRAPPER
 # ==============================================================================
@@ -833,25 +872,28 @@ try {
 
     do {
         Show-Header
-        Write-Host " Safe Mode is read-only: no downloads, installs, registry changes, deletes, or restarts." -ForegroundColor Green
+        Write-Host " Safe Mode is read-only. RPC changes are available only as an explicit confirmed action." -ForegroundColor Green
         Write-Host " +-- SAFE DIAGNOSTICS -------------------------------------------------+" -ForegroundColor DarkCyan
         Write-Host " | [1] Hardware Diagnostics & Battery Wear Audit                       |"
         Write-Host " | [2] Show Official OEM Support Links                                 |" -ForegroundColor Cyan
         Write-Host " | [3] Run Microsoft Defender Quick Scan                               |"
+        Write-Host " +-- EXPLICIT SYSTEM CHANGE -------------------------------------------+" -ForegroundColor DarkYellow
+        Write-Host " | [4] Apply printer RPC compatibility settings (UAC + confirmation)   |" -ForegroundColor Yellow
         Write-Host " +-- EXIT -------------------------------------------------------------+" -ForegroundColor DarkCyan
-        Write-Host " | [4] Exit Session                                                    |" -ForegroundColor DarkGray
+        Write-Host " | [5] Exit Session                                                    |" -ForegroundColor DarkGray
         Write-Host " +---------------------------------------------------------------------+" -ForegroundColor DarkCyan
         Write-Host ""
-        $choice = Read-Host " Enter your selection (1-4)"
+        $choice = Read-Host " Enter your selection (1-5)"
 
         switch ($choice) {
             "1" { Invoke-HardwareDiagnostics; pause }
             "2" { Show-OEMOfficialLink; pause }
             "3" { Invoke-SecurityScan; pause }
-            "4" { Write-Host "Terminating session..."; exit }
-            default { Write-Notice "Invalid selection, please select a valid option (1-4)." }
+            "4" { Invoke-RpcPrinterCompatibility; pause }
+            "5" { Write-Host "Terminating session..."; exit }
+            default { Write-Notice "Invalid selection, please select a valid option (1-5)." }
         }
-    } while ($choice -ne "4")
+    } while ($choice -ne "5")
 } catch {
     Write-Host ""
     Write-Host " [X] Unexpected Runtime Error: $($_.Exception.Message)" -ForegroundColor Red
